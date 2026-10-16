@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import type { MarketplaceListingDetail } from "../facebook/types.js";
-import { assess, detailFields, STATUSES, type Car, type CrmStatus } from "./model.js";
+import { assess, detailFields, STATUSES, CATEGORIES, EMPTY_REVIEW, type Review, type Car, type CrmStatus } from "./model.js";
 
 export const DATA_DIR = process.env.DONOR_TRACKER_DIR ?? path.join(os.homedir(), "Library/Application Support/Partloop Donor Tracker");
 export class TrackerStore {
@@ -24,6 +24,8 @@ export class TrackerStore {
       CREATE TABLE IF NOT EXISTS observations (id INTEGER PRIMARY KEY, car_id TEXT NOT NULL REFERENCES cars(id), observed_at TEXT NOT NULL, price_cents INTEGER, price_text TEXT NOT NULL, availability TEXT NOT NULL, posted_at TEXT, source TEXT NOT NULL, snapshot TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS observations_by_car ON observations(car_id, observed_at, id);
       CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY, car_id TEXT NOT NULL REFERENCES cars(id), at TEXT NOT NULL, request_id TEXT UNIQUE NOT NULL, note TEXT NOT NULL, changes TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS score_reviews (id INTEGER PRIMARY KEY, car_id TEXT NOT NULL REFERENCES cars(id), at TEXT NOT NULL, request_id TEXT UNIQUE NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, UNIQUE(car_id,revision));
+      CREATE TABLE IF NOT EXISTS search_hits (car_id TEXT NOT NULL, query TEXT NOT NULL, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, PRIMARY KEY(car_id,query));
       CREATE TABLE IF NOT EXISTS scan_runs (id TEXT PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE IF NOT EXISTS scan_lock (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires_at TEXT NOT NULL);
     `);
@@ -31,7 +33,30 @@ export class TrackerStore {
   close() { this.db.close(); }
   get(id: string): Car | undefined { return this.db.prepare("SELECT * FROM cars WHERE id=?").get(id) as Car | undefined; }
   cars(): Car[] { return this.db.prepare("SELECT * FROM cars ORDER BY first_seen_at DESC").all() as Car[]; }
-  view(now = new Date()) { return this.cars().map(car => ({ ...car, assessment: assess(car, now) })); }
+  view(now = new Date()) { return this.cars().map(car => { const review=this.review(car.id); return { ...car, review, assessment: assess(car, now, review) }; }); }
+  review(id: string): Review {
+    const row = this.db.prepare("SELECT data,revision,at FROM score_reviews WHERE car_id=? ORDER BY revision DESC LIMIT 1").get(id) as {data:string;revision:number;at:string} | undefined;
+    return row ? { ...JSON.parse(row.data), revision: row.revision, at: row.at } : { ...EMPTY_REVIEW, ratings: {} };
+  }
+  saveReview(id: string, input: Omit<Review,"at"> & {request_id:string}) {
+    if (!Number.isSafeInteger(input.revision) || input.revision<0 || !/^[\w-]{10,100}$/.test(input.request_id)) throw new Error("Invalid scorecard update");
+    if (input.pickup_cents != null && (!Number.isSafeInteger(input.pickup_cents) || input.pickup_cents<0 || input.pickup_cents>100000000)) throw new Error("Invalid pickup cost");
+    for (const [key,value] of Object.entries(input.ratings)) {
+      const category=CATEGORIES.find(category=>category.id===key);
+      if (!category || !value || (value.score!=null && (!Number.isInteger(value.score) || value.score<0 || value.score>category.max)) || typeof value.evidence!=="string" || !value.evidence.trim() || value.evidence.length>500) throw new Error("Each reviewed category needs a valid score and supporting evidence");
+    }
+    return this.db.transaction(()=>{
+      const previous=this.db.prepare("SELECT car_id FROM score_reviews WHERE request_id=?").get(input.request_id) as {car_id:string} | undefined;
+      if (previous) { if(previous.car_id!==id) throw new Error("Update token already used for another car"); return this.review(id); }
+      if (!this.get(id)) throw new Error("Car not found");
+      if (this.review(id).revision!==input.revision) throw new Error("This scorecard changed in another tab. Refresh before saving; your review is still in the form.");
+      this.db.prepare("INSERT INTO score_reviews(car_id,at,request_id,revision,data) VALUES(?,?,?,?,?)").run(id,new Date().toISOString(),input.request_id,input.revision+1,JSON.stringify({pickup_cents:input.pickup_cents,ratings:input.ratings}));
+      return this.review(id);
+    })();
+  }
+  searchHit(id: string, query: string, at = new Date().toISOString()) {
+    this.db.prepare("INSERT INTO search_hits VALUES(?,?,?,?) ON CONFLICT(car_id,query) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(id,query,at,at);
+  }
   observe(detail: MarketplaceListingDetail, at = new Date().toISOString(), source = "detail", seenInSearch = true) {
     if (!/^\d+$/.test(detail.id) || !detail.title) throw new Error("Cannot store an unidentified listing");
     const fields = detailFields(detail);
@@ -49,7 +74,9 @@ export class TrackerStore {
   }
   detailFailed(id: string, message: string) { this.db.prepare("UPDATE cars SET detail_error=? WHERE id=?").run(message.slice(0,300), id); }
   history(id: string) {
-    return { observations: this.db.prepare("SELECT id,observed_at,price_cents,price_text,availability,posted_at,source FROM observations WHERE car_id=? ORDER BY id DESC LIMIT 200").all(id),
+    return { searches: this.db.prepare("SELECT query,first_seen_at,last_seen_at FROM search_hits WHERE car_id=? ORDER BY last_seen_at DESC").all(id),
+      reviews: this.db.prepare("SELECT at,revision,data FROM score_reviews WHERE car_id=? ORDER BY revision DESC LIMIT 50").all(id).map(row=>{const r=row as {data:string};return {...r,data:JSON.parse(r.data)};}),
+      observations: this.db.prepare("SELECT id,observed_at,price_cents,price_text,availability,posted_at,source FROM observations WHERE car_id=? ORDER BY id DESC LIMIT 200").all(id),
       activity: this.db.prepare("SELECT * FROM activity WHERE car_id=? ORDER BY id DESC LIMIT 200").all(id).map(row => { const r = row as { changes: string }; return { ...r, changes: JSON.parse(r.changes) }; }) };
   }
   updateCrm(id: string, input: { status: CrmStatus; offer_cents: number | null; counter_cents: number | null; follow_up: string | null; note: string; revision: number; request_id: string }) {

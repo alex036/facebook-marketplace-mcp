@@ -10,6 +10,8 @@ import { report } from "./report.js";
 
 const crmInput = z.object({ status: z.enum(STATUSES), offer_cents: z.number().int().min(0).max(100000000).nullable(), counter_cents: z.number().int().min(0).max(100000000).nullable(), follow_up: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), note: z.string().max(10000), revision: z.number().int().nonnegative(), request_id: z.string().regex(/^[\w-]{10,100}$/) }).strict();
 
+const reviewInput = z.object({ revision: z.number().int().nonnegative(), request_id: z.string().regex(/^[\w-]{10,100}$/), pickup_cents: z.number().int().min(0).max(100000000).nullable(), ratings: z.record(z.object({ score: z.number().int().nullable(), evidence: z.string().trim().min(1).max(500) }).strict()) }).strict();
+
 export function createTrackerServer(store: TrackerStore, makeClient: () => ScannerClient = () => new FacebookClient({ chromeProfile: process.env.CHROME_PROFILE ?? "Default", browser: process.env.BROWSER ?? "chrome" })) {
   const token = randomBytes(32).toString("hex");
   const server = http.createServer(async (req, res) => {
@@ -33,6 +35,12 @@ export function createTrackerServer(store: TrackerStore, makeClient: () => Scann
           void result.catch(error => console.error(safeError(error)));
           return json(202,{started:true});
         }
+        const scorecard = url.pathname.match(/^\/api\/cars\/(\d+)\/scorecard$/);
+        if (scorecard) {
+          const input=reviewInput.parse(JSON.parse(body));
+          try { return json(200,{review:store.saveReview(scorecard[1],input)}); }
+          catch(error) { const message=safeError(error); return json(/another tab/.test(message)?409:400,{error:message}); }
+        }
         if (history) {
           const input = crmInput.parse(JSON.parse(body));
           try { return json(200,{car:store.updateCrm(history[1],input)}); }
@@ -46,7 +54,7 @@ export function createTrackerServer(store: TrackerStore, makeClient: () => Scann
         return res.end(fs.readFileSync(new URL(`./public/${file[0]}`,import.meta.url)));
       }
       json(404,{error:"Not found"});
-    } catch(error) { json(400,{error:error instanceof z.ZodError ? "Check the inquiry fields" : error instanceof SyntaxError ? "Invalid request" : safeError(error)}); }
+    } catch(error) { json(400,{error:error instanceof z.ZodError ? "Check the inquiry or scorecard fields" : error instanceof SyntaxError ? "Invalid request" : safeError(error)}); }
   });
   return server;
 }

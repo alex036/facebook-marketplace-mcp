@@ -224,7 +224,7 @@ export class FacebookClient {
     return data;
   }
 
-  async searchListings(params: SearchParams): Promise<SearchResult> {
+  async searchListings(params: SearchParams, hydrate = true): Promise<SearchResult> {
     const variables = buildSearchVariables(params);
     const data = await this.graphqlRequest(MARKETPLACE_SEARCH_DOC_ID, variables);
     const result = parseSearchResponse(data);
@@ -238,6 +238,8 @@ export class FacebookClient {
       result.hasNextPage = true;
     }
 
+    // The local tracker hydrates only its bounded refresh queue, avoiding duplicate page fetches.
+    if (!hydrate) return result;
     const stubs = result.listings.filter((l) => l.needsHydration);
     if (stubs.length === 0) return result;
 

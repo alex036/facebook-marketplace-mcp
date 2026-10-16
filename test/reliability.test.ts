@@ -120,3 +120,18 @@ test("sort, delivery, date and price variables retain upstream mappings", () => 
   const zero = buildSearchVariables({ ...params, maxPrice: 0 });
   assert.equal((zero.params as { browse_request_params: Record<string, unknown> }).browse_request_params.filter_price_upper_bound, 0);
 });
+
+test("the tracker can defer hydration while normal MCP searches still hydrate by default", async t => {
+  t.mock.method(RateLimiter.prototype,"wait",async()=>{});
+  const client=new FacebookClient();t.mock.method(client,"ensureSession",async()=>session);
+  const requested:string[]=[];
+  t.mock.method(globalThis,"fetch",async(input:string|URL|Request)=>{
+    const url=String(input);requested.push(url);
+    if(url.includes('/api/graphql/')) return new Response(JSON.stringify({data:{marketplace_search:{feed_units:{edges:[{node:{story_key:'111'}}],page_info:{has_next_page:false}}}}}));
+    return new Response(page({id:'111',marketplace_listing_title:'2008 Volkswagen Golf',listing_price:{formatted_amount:'CA$500'}}));
+  });
+  const raw=await client.searchListings(params,false);
+  assert.equal(raw.listings[0].needsHydration,true);assert.equal(requested.filter(url=>url.includes('/item/')).length,0);
+  const hydrated=await client.searchListings(params);
+  assert.equal(hydrated.listings[0].needsHydration,undefined);assert.equal(hydrated.listings[0].price,'CA$500');
+});
