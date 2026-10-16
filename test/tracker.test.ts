@@ -249,3 +249,11 @@ test("expanded model searches keep accessory and wheel ads outside the donor sho
     assert.equal(assess({...car,title,description:'Available for pickup.'}).eligible,false,title);
   }
 });
+
+test("broad Golf searches exclude sporting equipment, misspelled components, and per-part sellers", t => {
+  const store=new TrackerStore(':memory:');t.after(()=>store.close());store.observe(detail());const car=store.get('111')!;
+  assert.equal(assess({...car,title:'Golf Launch Monitor Rapsodo MLM2 Pro',description:'Mint condition indoor simulator.'}).eligible,false);
+  assert.equal(assess({...car,title:'Vw Golf Jetta beetle tdi mk4 02J 5 speed manual transnission',description:'Good used transmission, all gears work. $500 outright.'}).eligible,false);
+  assert.equal(assess({...car,title:'2009 Volkswagen Tiguan',description:'For parts. DOORS SOLD. Everything else let me know what you need.'}).eligible,false);
+  assert.equal(assess({...car,title:'2009 Volkswagen Tiguan',description:'Selling whole car, engine already sold.'}).eligible,true);
+});

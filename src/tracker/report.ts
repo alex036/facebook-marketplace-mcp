@@ -50,7 +50,7 @@ export function report(store: TrackerStore, now = new Date()) {
   const notes: string[] = [];
   if (!latest || latest.status === "running" || !latest.started_at || Date.parse(latest.started_at) < now.getTime()-18*3600000) notes.push("Scan coverage is missing, running or stale; do not treat this as a complete market check.");
   if (latest?.status === "partial" || latest?.status === "failed") notes.push(`Latest scan ${latest.status}; some listings were not refreshed.`);
-  notes.push(...latest?.summary?.warnings ?? []);
+  notes.push(...latest?.summary?.errors ?? [], ...latest?.summary?.warnings ?? []);
   if (latest?.summary?.queries) notes.push(`Searches: ${latest.summary.queries.map(query=>`${query.query} (up to C$${query.maxPrice})`).join(", ")}`);
   const inquiryLine=(car: Car)=>`- [${clean(car.title)}](${car.url}) — ${context(car)} Availability: ${clean(car.availability)}${car.detail_error ? "; latest refresh failed" : ""}.`;
   return { generated_at: now.toISOString(), since, new_cars: fresh.length, price_drops: drops.length, worthy: worth.length, negotiation_watch:negotiation.length, renewed_opportunities:renewed.length,
