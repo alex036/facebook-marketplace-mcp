@@ -4,3 +4,6 @@ dist/
 .env.local
 *.db
 /tmp/
+captured-queries.json
+.local/
+.codebase-memory/

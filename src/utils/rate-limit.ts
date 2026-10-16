@@ -3,6 +3,9 @@ export class RateLimiter {
   private timestamps: number[] = [];
 
   constructor(maxPerMinute: number) {
+    if (!Number.isInteger(maxPerMinute) || maxPerMinute < 1) {
+      throw new Error("Request rate must be a positive integer");
+    }
     this.maxPerMinute = maxPerMinute;
   }
 

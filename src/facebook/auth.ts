@@ -49,11 +49,11 @@ const BROWSER_CONFIGS: Record<BrowserName, BrowserConfig> = {
 };
 
 function isBrowserName(value: string): value is BrowserName {
-  return value in BROWSER_CONFIGS;
+  return Object.hasOwn(BROWSER_CONFIGS, value);
 }
 
 export function resolveBrowserName(value: string | undefined): BrowserName {
-  const normalized = (value ?? "chrome").toLowerCase();
+  const normalized = (value ?? "chrome").trim().toLowerCase();
   if (!isBrowserName(normalized)) {
     throw new Error(
       `Unsupported browser "${value}". Supported browsers: ${Object.keys(BROWSER_CONFIGS).join(", ")}.`
@@ -187,11 +187,7 @@ function decryptCookieValueWindows(encrypted: Buffer, key: Buffer): string {
   const prefix = encrypted.subarray(0, 3).toString("ascii");
   if (prefix !== "v10" && prefix !== "v11") {
     // Pre-Chrome-80: the value itself is DPAPI-protected directly.
-    try {
-      return decryptDPAPI(encrypted).toString("utf8");
-    } catch {
-      return encrypted.toString("utf8");
-    }
+    return decryptDPAPI(encrypted).toString("utf8");
   }
 
   // v10/v11: AES-256-GCM with a 12-byte nonce and 16-byte auth tag.
@@ -207,33 +203,39 @@ function decryptCookieValueWindows(encrypted: Buffer, key: Buffer): string {
 }
 
 function getCookieDbPath(config: BrowserConfig, profile: string): string {
-  if (process.platform === "win32") {
-    const base = path.join(getWinUserDataDir(config), profile);
-    // Modern Chromium keeps cookies under Network\Cookies; older versions
-    // kept them directly in the profile directory.
-    const networkPath = path.join(base, "Network", "Cookies");
-    if (fs.existsSync(networkPath)) return networkPath;
-    return path.join(base, "Cookies");
-  }
+  const base = path.join(getBrowserDataDir(config), profile);
+  const networkPath = path.join(base, "Network", "Cookies");
+  return fs.existsSync(networkPath) ? networkPath : path.join(base, "Cookies");
+}
 
-  return path.join(
-    os.homedir(),
-    "Library/Application Support",
-    config.macDirName,
-    profile,
-    "Cookies"
-  );
+function getBrowserDataDir(config: BrowserConfig): string {
+  return process.platform === "win32"
+    ? getWinUserDataDir(config)
+    : path.join(os.homedir(), "Library/Application Support", config.macDirName);
+}
+
+export function resolveBrowserProfile(profile: string, browser: BrowserName = "chrome"): string {
+  const config = BROWSER_CONFIGS[browser];
+  if (fs.existsSync(getCookieDbPath(config, profile))) return profile;
+  const userDataDir = getBrowserDataDir(config);
+  let infoCache: Record<string, { name?: string }> = {};
+  try {
+    infoCache = JSON.parse(fs.readFileSync(path.join(userDataDir, "Local State"), "utf8"))?.profile?.info_cache ?? {};
+  } catch {
+    // Directory names still work when the display-name index is unavailable.
+  }
+  const wanted = profile.trim().toLowerCase();
+  for (const [dir, info] of Object.entries(infoCache)) {
+    if (info?.name?.trim().toLowerCase() === wanted && fs.existsSync(getCookieDbPath(config, dir))) return dir;
+  }
+  const available = listAvailableProfiles(config).map(dir => `${dir} (${infoCache[dir]?.name ?? "unnamed"})`);
+  throw new Error(`Browser profile "${profile}" not found for ${config.label}. Available: ${available.join(", ") || "none"}.`);
 }
 
 function listAvailableProfiles(config: BrowserConfig): string[] {
-  const userDataDir =
-    process.platform === "win32"
-      ? getWinUserDataDir(config)
-      : path.join(os.homedir(), "Library/Application Support", config.macDirName);
-
   try {
     return fs
-      .readdirSync(userDataDir, { withFileTypes: true })
+      .readdirSync(getBrowserDataDir(config), { withFileTypes: true })
       .filter(
         (entry) =>
           entry.isDirectory() &&
@@ -252,7 +254,7 @@ export function extractChromeCookies(
 ): FacebookCookie[] {
   const isWindows = process.platform === "win32";
   const config = BROWSER_CONFIGS[browser];
-  const cookiePath = getCookieDbPath(config, profile);
+  const cookiePath = getCookieDbPath(config, resolveBrowserProfile(profile, browser));
 
   if (!fs.existsSync(cookiePath)) {
     const available = listAvailableProfiles(config);
@@ -266,31 +268,19 @@ export function extractChromeCookies(
   }
 
   // Chrome locks the DB while running — copy it first
-  const tmpPath = path.join(os.tmpdir(), `${browser}_cookies_${Date.now()}`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `${browser}_cookies_`));
+  const tmpPath = path.join(tmpDir, "Cookies");
+  let db: Database.Database | undefined;
   try {
     fs.copyFileSync(cookiePath, tmpPath);
-  } catch {
-    throw new Error(
-      `Failed to copy ${config.label} cookie DB from ${cookiePath}. ` +
-        `Make sure ${config.label} isn't blocking access to its profile files.`
-    );
-  }
-
-  const key = isWindows
-    ? getWindowsMasterKey(config)
-    : deriveChromeKey(getChromePassword(config));
-  const decryptCookieValue = isWindows
-    ? decryptCookieValueWindows
-    : decryptCookieValueMac;
-
-  let db: Database.Database;
-  try {
+    fs.chmodSync(tmpPath, 0o600);
+    const key = isWindows
+      ? getWindowsMasterKey(config)
+      : deriveChromeKey(getChromePassword(config));
+    const decryptCookieValue = isWindows
+      ? decryptCookieValueWindows
+      : decryptCookieValueMac;
     db = new Database(tmpPath, { readonly: true });
-  } catch {
-    throw new Error(`Failed to open cookie database at ${tmpPath}`);
-  }
-
-  try {
     const rows = db
       .prepare(
         `SELECT host_key, name, value, encrypted_value, path, expires_utc,
@@ -329,12 +319,8 @@ export function extractChromeCookies(
       };
     });
   } finally {
-    db.close();
-    try {
-      fs.unlinkSync(tmpPath);
-    } catch {
-      // cleanup failure is non-fatal
-    }
+    db?.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 

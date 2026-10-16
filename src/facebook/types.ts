@@ -28,6 +28,8 @@ export interface MarketplaceListing {
   postedDate: string;
   url: string;
   isPending: boolean;
+  /** Search feeds sometimes contain only the public listing ID. */
+  needsHydration?: boolean;
 }
 
 export interface MarketplaceListingDetail extends MarketplaceListing {
@@ -40,6 +42,21 @@ export interface MarketplaceListingDetail extends MarketplaceListing {
   };
 }
 
+export type SearchSortBy =
+  | "suggested"
+  | "distance"
+  | "date_listed"
+  | "price_low_to_high"
+  | "price_high_to_low";
+
+export type DeliveryMethod = "all" | "local_pickup" | "shipping";
+
+export type DateListed =
+  | "all"
+  | "last_24_hours"
+  | "last_7_days"
+  | "last_30_days";
+
 export interface SearchParams {
   query: string;
   latitude: number;
@@ -48,12 +65,16 @@ export interface SearchParams {
   minPrice?: number;
   maxPrice?: number;
   category?: string;
+  sortBy?: SearchSortBy;
+  deliveryMethod?: DeliveryMethod;
+  dateListed?: DateListed;
   limit: number;
   cursor?: string;
 }
 
 export interface SearchResult {
   listings: MarketplaceListing[];
+  omittedCount?: number;
   hasNextPage: boolean;
   endCursor: string | null;
 }

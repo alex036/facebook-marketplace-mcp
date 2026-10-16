@@ -25,10 +25,6 @@ const GRAPHQL_URL = "https://www.facebook.com/api/graphql/";
 const MARKETPLACE_URL = "https://www.facebook.com/marketplace/";
 
 const IS_WINDOWS = process.platform === "win32";
-
-// Facebook's fraud detection checks that sec-ch-ua-platform / the User-Agent
-// OS token are consistent with the client — spoof whichever OS we're
-// actually pulling cookies from rather than hardcoding macOS.
 const USER_AGENT = IS_WINDOWS
   ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
   : "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
@@ -49,6 +45,7 @@ const BROWSER_HEADERS: Record<string, string> = {
 export class FacebookClient {
   private session: FacebookSession | null = null;
   private rateLimiter: RateLimiter;
+  private pageRateLimiter: RateLimiter;
   private reqCounter = 0;
   private chromeProfile: string;
   private browser: BrowserName;
@@ -56,11 +53,17 @@ export class FacebookClient {
   constructor(
     options: {
       maxRequestsPerMinute?: number;
+      maxPageFetchesPerMinute?: number;
       chromeProfile?: string;
       browser?: string;
     } = {}
   ) {
     this.rateLimiter = new RateLimiter(options.maxRequestsPerMinute ?? 3);
+    // Listing pages are plain document loads rather than API calls, and search
+    // hydration needs one per result, so they get a separate, higher budget.
+    this.pageRateLimiter = new RateLimiter(
+      options.maxPageFetchesPerMinute ?? 30
+    );
     this.chromeProfile = options.chromeProfile ?? "Default";
     this.browser = resolveBrowserName(options.browser);
   }
@@ -71,11 +74,7 @@ export class FacebookClient {
   }
 
   async initSession(): Promise<FacebookSession> {
-    const cookies = extractChromeCookies(
-      "facebook.com",
-      this.chromeProfile,
-      this.browser
-    );
+    const cookies = extractChromeCookies("facebook.com", this.chromeProfile, this.browser);
 
     if (cookies.length === 0) {
       throw new Error(
@@ -208,25 +207,57 @@ export class FacebookClient {
       throw new Error(`GraphQL request failed: ${res.status} ${res.statusText}`);
     }
 
-    let text = await res.text();
-
-    // Strip Facebook's anti-JSONP prefix
-    const jsonStart = text.indexOf("{");
-    if (jsonStart > 0) {
-      text = text.slice(jsonStart);
-    }
-
+    const text = await res.text();
+    let data: unknown;
     try {
-      return JSON.parse(text);
+      data = JSON.parse(text.replace(/^\s*for\s*\(;;\);\s*/, ""));
     } catch {
-      throw new Error(`Failed to parse GraphQL response: ${text.slice(0, 200)}`);
+      // Responses can contain account data; never echo their body into MCP errors.
+      throw new Error("Failed to parse GraphQL response");
     }
+    if (!data || typeof data !== "object" || Array.isArray(data) ||
+        !("data" in data) || !data.data || typeof data.data !== "object" || Array.isArray(data.data)) {
+      throw new Error("Facebook returned no usable GraphQL data");
+    }
+    return data;
   }
 
   async searchListings(params: SearchParams): Promise<SearchResult> {
     const variables = buildSearchVariables(params);
     const data = await this.graphqlRequest(MARKETPLACE_SEARCH_DOC_ID, variables);
-    return parseSearchResponse(data);
+    const result = parseSearchResponse(data);
+
+    // Facebook ignores the requested `count` and returns a fixed page (~24), so
+    // enforce the limit here. This matters before hydration, which costs one
+    // page fetch per listing.
+    if (params.limit > 0 && result.listings.length > params.limit) {
+      result.omittedCount = result.listings.length - params.limit;
+      result.listings = result.listings.slice(0, params.limit);
+      result.hasNextPage = true;
+    }
+
+    const stubs = result.listings.filter((l) => l.needsHydration);
+    if (stubs.length === 0) return result;
+
+    // The search response carried ids only, so fetch each listing page to fill
+    // in title, price, location and seller. Sequential to respect the limiter.
+    for (const stub of stubs) {
+      try {
+        const detail = await this.fetchListingPage(stub.id);
+        stub.title = detail.title;
+        stub.price = detail.price || "N/A";
+        stub.location = detail.location || "Unknown";
+        stub.sellerName = detail.sellerName || "Unknown";
+        stub.postedDate = detail.postedDate;
+        stub.imageUrl = detail.imageUrl;
+        stub.isPending = detail.isPending;
+        delete stub.needsHydration;
+      } catch {
+        // Leave the stub as-is; the id and url are still useful.
+      }
+    }
+
+    return result;
   }
 
   async getListingDetail(listingId: string): Promise<MarketplaceListingDetail> {
@@ -240,8 +271,14 @@ export class FacebookClient {
     }
 
     // Fallback: fetch the listing page directly and parse embedded data
+    return this.fetchListingPage(listingId);
+  }
+
+  private async fetchListingPage(
+    listingId: string
+  ): Promise<MarketplaceListingDetail> {
     const session = await this.ensureSession();
-    await this.rateLimiter.wait();
+    await this.pageRateLimiter.wait();
 
     const url = `https://www.facebook.com/marketplace/item/${listingId}/`;
     const res = await fetch(url, {
@@ -259,7 +296,11 @@ export class FacebookClient {
     }
 
     const html = await res.text();
-    return parseListingDetailFromPage(html, listingId);
+    const detail = parseListingDetailFromPage(html, listingId);
+    if (!detail.title && !detail.price) {
+      throw new Error(`Could not verify listing ${listingId}; it may be unavailable or the session may have expired.`);
+    }
+    return detail;
   }
 
   async searchLocation(

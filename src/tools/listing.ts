@@ -2,10 +2,10 @@ import { z } from "zod";
 import type { FacebookClient } from "../facebook/client.js";
 
 export const getListingSchema = {
-  listing_id: z.string().describe("Facebook Marketplace listing ID"),
+  listing_id: z.string().regex(/^\d+$/).describe("Facebook Marketplace listing ID"),
 };
 
-export function createListingHandler(client: FacebookClient) {
+export function createListingHandler(client: Pick<FacebookClient, "getListingDetail">) {
   return async (args: { listing_id: string }) => {
     try {
       const listing = await client.getListingDetail(args.listing_id);
@@ -13,7 +13,7 @@ export function createListingHandler(client: FacebookClient) {
       const parts = [
         `# ${listing.title}`,
         "",
-        `**Price:** ${listing.price}`,
+        `**Price:** ${listing.price || "Unknown"}`,
         listing.condition ? `**Condition:** ${listing.condition}` : null,
         `**Location:** ${listing.location}`,
         listing.isPending ? "**Status:** ⏳ Pending" : null,
@@ -37,6 +37,7 @@ export function createListingHandler(client: FacebookClient) {
         .join("\n");
 
       return {
+        structuredContent: { listing },
         content: [{ type: "text" as const, text: parts }],
       };
     } catch (error) {
