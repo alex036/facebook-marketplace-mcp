@@ -242,3 +242,10 @@ test("a follow-up already recorded after a drop is not presented as an untouched
   store.db.prepare("UPDATE activity SET at=? WHERE id=2").run('2026-10-16T13:00:00.000Z');
   assert.equal(report(store,new Date('2026-10-16T22:15:00Z')).renewed_opportunities,0);
 });
+
+test("expanded model searches keep accessory and wheel ads outside the donor shortlist", t => {
+  const store=new TrackerStore(':memory:');t.after(()=>store.close());store.observe(detail());const car=store.get('111')!;
+  for(const title of ['Gloss Black Audi A3 S line Side Skirts','5x112 Audi a6 fat fives','Audi A4 side skirts','2008 Audi A4 grille']) {
+    assert.equal(assess({...car,title,description:'Available for pickup.'}).eligible,false,title);
+  }
+});

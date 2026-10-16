@@ -68,9 +68,10 @@ export function assess(car: Car, now = new Date(), review: Review = EMPTY_REVIEW
   const reasons: string[] = [], checks: string[] = [];
   const whole = /\b(selling (?:the )?(?:whole|entire) car|whole (?:car|vehicle)|complete (?:car|vehicle)|take (?:the )?whole car)\b/.test(text);
   const year = Number(title.match(/\b((?:19|20)\d{2})\b/)?.[1]) || null;
-  const identifiedCar = MODEL.test(title);
+  const modelFirstTitle = /^(?:(?:volkswagen|vw|audi)\s+)?(?:jetta|golf|passat|rabbit|gti|gli|beetle|a[1-8]|tt)\b/.test(title);
+  const identifiedCar = MODEL.test(title) && (year!=null || modelFirstTitle);
   const repairTitle = identifiedCar && /\b(issue|problem|needs|blown|broken|fault|seized)\b/.test(title);
-  const component = /\b(engine|motor|transmission|turbo|strut|door|hood|bumper|headlight|tail light|trunk|exhaust|wheels|rims|tires|seats|suspension|calipers|springs|axle|brake|mirror|fender)\b/.test(title);
+  const component = /\b(engine|motor|transmission|turbo|strut|door|hood|bumper|headlight|tail light|trunk|exhaust|wheels|rims|tires|seats|suspension|calipers|springs|axle|brake|mirror|fender|side skirts?|grill[e]?|spoiler|splitter|diffuser|radio|stereo|coilovers?|alternator|starter|compressor|radiator|5x112|fat fives|injectors?|ecu|steering wheel)\b/.test(title);
   const partOut = /\b(part[ -]?out|parting out|for parts)\b/.test(text);
   const missing = /\b(?:engine|motor|transmission|gearbox|interior|modules?) (?:already )?(?:sold|missing|removed)\b|\b(?:no|missing|removed) (?:engine|motor|transmission|gearbox|interior)\b/.test(text);
   const sellingParts = /\b(?:lmk|let me know) what parts|\bparts? prices?\b/.test(text);
