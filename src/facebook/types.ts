@@ -28,6 +28,9 @@ export interface MarketplaceListing {
   postedDate: string;
   url: string;
   isPending: boolean;
+  isSold?: boolean;
+  latitude?: number;
+  longitude?: number;
   /** Search feeds sometimes contain only the public listing ID. */
   needsHydration?: boolean;
 }

@@ -11,11 +11,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-tracker-assets.mjs",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "capture-queries": "tsx scripts/capture-queries.ts",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "tracker": "node dist/tracker/cli.js serve",
+    "tracker:scan": "node dist/tracker/cli.js scan",
+    "tracker:report": "node dist/tracker/cli.js report",
+    "tracker:import": "node dist/tracker/cli.js import-baseline",
+    "tracker:install-ui": "node scripts/install-tracker-agent.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

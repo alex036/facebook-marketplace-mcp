@@ -259,6 +259,8 @@ export function parseListingDetailFromPage(
       textValue(price?.formatted_amount) ||
       (amount ? [textValue(price?.currency), amount].filter(Boolean).join(" ") : "");
     const location = isRecord(listing.location) ? listing.location : undefined;
+    if (typeof location?.latitude === "number" && Math.abs(location.latitude) <= 90) detail.latitude = location.latitude;
+    if (typeof location?.longitude === "number" && Math.abs(location.longitude) <= 180) detail.longitude = location.longitude;
     const reverseGeocode = isRecord(location?.reverse_geocode)
       ? location.reverse_geocode
       : undefined;
@@ -298,6 +300,7 @@ export function parseListingDetailFromPage(
       if (isRecord(condition)) detail.condition = textValue(condition.label);
     }
     detail.isPending = listing.is_pending === true;
+    if (typeof listing.is_sold === "boolean") detail.isSold = listing.is_sold;
     if (typeof listing.creation_time === "number" || typeof listing.creation_time === "string") {
       const date = new Date(Number(listing.creation_time) * 1000);
       if (Number.isFinite(date.getTime())) detail.postedDate = date.toISOString();

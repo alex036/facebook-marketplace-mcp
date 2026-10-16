@@ -120,6 +120,7 @@ export class FacebookClient {
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
       },
       redirect: "follow",
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {
@@ -195,6 +196,7 @@ export class FacebookClient {
         "X-FB-LSD": session.lsd,
       },
       body: body.toString(),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (res.status === 401 || res.status === 403) {
@@ -289,6 +291,7 @@ export class FacebookClient {
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
       },
       redirect: "follow",
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {

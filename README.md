@@ -2,6 +2,8 @@
 
 Personal maintained fork: [alex036/facebook-marketplace-mcp](https://github.com/alex036/facebook-marketplace-mcp). See [UPSTREAM_FIXES.md](UPSTREAM_FIXES.md) for reviewed upstream PRs, verification and update instructions. Existing tool names and Chrome-profile authentication remain compatible. macOS Chrome is live-verified; other browser/platform paths are not hardware-verified here.
 
+For the local vehicle shortlist, price/age history and inquiry log, see [Donor tracker](DONOR_TRACKER.md). Open http://127.0.0.1:4318 after setup.
+
 An MCP server that provides access to Facebook Marketplace via direct GraphQL API calls. No browser automation at runtime — speaks Facebook's internal protocol directly.
 
 ## How It Works
