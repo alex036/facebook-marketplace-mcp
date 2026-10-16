@@ -36,6 +36,8 @@ npm test
 
 Codex continues to use server name `facebook-marketplace`, Node 22 and `CHROME_PROFILE=Default`. The configured entry point is this checkout's `dist/index.js`. Tool discovery/handshake and five original vehicle detail reads were tested through a fresh stdio MCP client; all five prices matched the previously browser-verified prices, with nonempty titles/descriptions and multiple photos. A Cambridge Volkswagen search returned exactly the requested five results and disclosed nine additional current-page results omitted by the limit. Live verification output stays under ignored `.local/`.
 
+Existing Codex sessions may retain the old MCP process after configuration changes. Reconnect the MCP server or restart Codex before using it in an existing chat. A fresh connection should return structured listing data and nonempty titles/descriptions for the verified vehicle pages.
+
 Saved monitors still use `~/.fb-marketplace/monitors.json`. They do not schedule themselves. No donor database, UI or scheduled job is included in this MCP repair.
 
 ## Updating

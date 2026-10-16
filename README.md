@@ -31,7 +31,7 @@ Supported browsers on both platforms: **Chrome**, **Edge**, **Brave** (all Chrom
 ## Installation
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/alex036/facebook-marketplace-mcp.git
 cd facebook-marketplace-mcp
 npm install
 npm run build
@@ -128,8 +128,10 @@ Delete a saved monitor.
 
 | Env Variable | Default | Description |
 |-------------|---------|-------------|
-| `CHROME_PROFILE` | `Default` | Browser profile directory name (e.g. `Default`, `Profile 1`) |
+| `CHROME_PROFILE` | `Default` | Browser profile directory or display name (e.g. `Default`, `Profile 1`, `Person 1`) |
 | `BROWSER` | `chrome` | Which Chromium browser to read cookies from: `chrome`, `edge`, or `brave` |
+| `MAX_REQUESTS_PER_MINUTE` | `3` | Positive integer rate limit for GraphQL/bootstrap requests |
+| `MAX_PAGE_FETCHES_PER_MINUTE` | `30` | Positive integer rate limit for listing-page reads |
 
 ## Updating GraphQL Queries
 
@@ -145,7 +147,7 @@ This opens a browser, navigates Marketplace, and captures current query IDs. Upd
 
 ## Rate Limiting
 
-The server self-rate-limits to 3 requests/minute with random jitter to avoid detection. This means searches take a few seconds.
+The server uses separate limits for GraphQL/bootstrap requests (3 per minute) and listing-page reads (30 per minute), with random jitter. Both limits are configurable using the environment variables above.
 
 ## Troubleshooting
 
