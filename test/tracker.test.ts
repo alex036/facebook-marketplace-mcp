@@ -102,7 +102,7 @@ test("evening report separates new discoveries, prior-window drops and older wor
   store.observe(detail(),"2026-10-14T12:00:00.000Z");store.observe(detail({price:"CAD 650"}),"2026-10-16T12:00:00.000Z");
   store.observe(detail({id:"222",title:"2011 Audi A4"}),"2026-10-16T12:01:00.000Z");
   const output=report(store,new Date("2026-10-16T22:15:00Z"));assert.equal(output.new_cars,1);assert.equal(output.price_drops,1);
-  assert.match(output.markdown,/45d listed/);assert.match(output.markdown,/\$750.*\$650/);assert.match(output.markdown,/not profit estimates/);
+  assert.match(output.markdown,/45d listed/);assert.match(output.markdown,/\$750.*\$650/);assert.match(output.markdown,/Judgments use the ad and your saved notes/);
 });
 
 test("local API protects inquiry writes from cross-site requests and persists valid saves", async t => {
@@ -125,9 +125,9 @@ test("scorecard keeps unknowns unscored and prevents a confident invented valuat
   const a=assess(store.get("111")!,now);
   assert.equal(CATEGORIES.reduce((sum,c)=>sum+c.max,0),100);
   for(const id of ["economics","completeness","condition","mechanical","documentation","age","pickup"]) assert.equal(a.categories.find(c=>c.id===id)?.score,null);
-  assert.equal(a.confidence,"Low");assert.equal(a.label,"Needs evidence");
+  assert.equal(a.confidence,"Low");assert.equal(a.label,"Worth contacting");
   assert.equal(a.score_max,a.score+100-a.coverage);assert.ok(a.score_max>a.score);
-  assert.match(a.categories[0].evidence,/uncalibrated/);assert.equal(a.all_in_cents,null);
+  assert.match(a.categories[0].evidence,/commuter-car parts/);assert.equal(a.all_in_cents,null);
 });
 
 test("mechanical failure preserves complete donor potential and does not penalize other categories", t => {
@@ -200,7 +200,8 @@ test("report uses declined-offer history when a later verified price drop change
   assert.equal(output.renewed_opportunities,1);assert.match(output.markdown,/price dropped after that decline/);
   assert.match(output.markdown,/offer then \$500/);assert.match(output.markdown,/Wanted more than C\$500/);
   assert.match(output.markdown,/Follow-up due 2026-10-15/);assert.match(output.markdown,/222/);
-  assert.match(output.markdown,/confidence/);assert.match(output.markdown,/provisional range/);
+  assert.match(output.markdown,/Worth contacting/);
+  assert.doesNotMatch(output.markdown,/Needs evidence|confidence|provisional range|Unknown:|uncalibrated|driving condition unverified|Add a pickup/);
   const a=store.history("111").activity.length;report(store);assert.equal(store.history("111").activity.length,a);
 });
 
@@ -256,4 +257,23 @@ test("broad Golf searches exclude sporting equipment, misspelled components, and
   assert.equal(assess({...car,title:'Vw Golf Jetta beetle tdi mk4 02J 5 speed manual transnission',description:'Good used transmission, all gears work. $500 outright.'}).eligible,false);
   assert.equal(assess({...car,title:'2009 Volkswagen Tiguan',description:'For parts. DOORS SOLD. Everything else let me know what you need.'}).eligible,false);
   assert.equal(assess({...car,title:'2009 Volkswagen Tiguan',description:'Selling whole car, engine already sold.'}).eligible,true);
+});
+
+test("contact verdicts use asking price and known faults without requiring a filled scorecard", t => {
+  const store=new TrackerStore(":memory:");t.after(()=>store.close());
+  const now=new Date("2026-10-18T12:00:00Z");
+  store.observe(detail({description:"Engine runs strong. Battery drain. Rocker rust.",price:"CAD 1000"}),now.toISOString());
+  const car=store.get("111")!;
+  const a=assess(car,now);
+  assert.equal(a.label,"Negotiate");
+  assert.ok(a.summary.includes("Ad: starts/runs"));
+  assert.ok(a.summary.includes("Ad: rocker/surface rust"));
+  assert.ok(a.summary.includes("Cooling/electrical fault reported"));
+  assert.equal(assess({...car,price_cents:60000},now).label,"Worth contacting");
+  assert.equal(assess({...car,price_cents:75000,description:"Does not run"},now).label,"Negotiate");
+  assert.equal(assess({...car,description:"No ownership"},now).label,"Ownership issue — resolve first");
+  assert.equal(assess({...car,detail_error:"404"},now).label,"Refresh needed");
+  const output=report(store,now).markdown;
+  assert.match(output,/Negotiate/);assert.match(output,/starts\/runs/);assert.match(output,/rocker\/surface rust/);
+  assert.doesNotMatch(output,/unverified|uncalibrated|needs evidence|Unknown:|confidence|provisional range|Check:/i);
 });

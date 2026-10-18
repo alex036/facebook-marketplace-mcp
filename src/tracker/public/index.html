@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Donor watch · Smith Euro Parts</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Donor watch · Smith Euro Parts</title><link rel="stylesheet" href="/style.css"><script src="/app.js" type="module"></script></head>
 <body>
 <header><div><p class="eyebrow">SMITH EURO PARTS / LOCAL SOURCING</p><h1>Donor watch</h1><p class="sub">VW &amp; Audi · Cambridge–Kitchener · 50 km · up to C$1,200</p></div><div class="header-actions"><button id="report-button" class="secondary">Evening report</button><button id="scan-button">Scan now</button></div></header>
 <div id="notice" class="notice" role="status" aria-live="polite"></div>
 <section class="metrics" aria-label="Tracker overview" id="metrics"></section>
 <main><section class="browse"><div class="toolbar"><label>View<select id="scope"><option value="shortlist">Donor shortlist</option><option value="negotiation">Negotiation watch · C$1,200–1,600</option><option value="inquiries">My inquiries</option><option value="followups">Follow-ups due</option><option value="all">All tracked ads</option><option value="passed">Passed / outside shortlist</option></select></label><label>Sort<select id="sort"><option value="best">Best leads</option><option value="oldest">Oldest listed first</option><option value="price">Lowest asking price</option><option value="newest">Newest discovered</option></select></label><label class="search">Search<input id="search" type="search" placeholder="Model, place or seller"></label></div><p id="count" class="muted"></p><div id="cars" class="cars"></div></section>
 <aside id="detail" aria-label="Car details"><div class="empty"><span class="empty-mark">↗</span><h2>Find your next donor</h2><p>Select a car to see its age, price history and inquiry log.</p></div></aside></main>
-<dialog id="report-dialog"><div class="dialog-heading"><h2>Evening report</h2><button id="close-report" class="secondary">Close</button></div><pre id="report-text"></pre></dialog>
-<footer>Older ads get a negotiation boost. Ratings are screening priorities, not profit estimates. Asking price and sold status do not establish the final sale price. Your notes stay in this local database.</footer>
+<dialog id="report-dialog" aria-labelledby="report-heading"><div class="dialog-heading"><h2 id="report-heading">Evening report</h2><button id="close-report" class="secondary">Close</button></div><article id="report-text" class="report-content"></article></dialog>
+<footer>Judgments use the ad and your saved notes. Prices are asking prices in CAD. Your notes stay in this local database.</footer>
 </body></html>

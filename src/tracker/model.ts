@@ -101,8 +101,8 @@ export function assess(car: Car, now = new Date(), review: Review = EMPTY_REVIEW
   type Evidence = { score: number | null; evidence: string; source: string };
   const auto: Record<CategoryId, Evidence> = Object.fromEntries(CATEGORIES.map(category => [category.id, { score: null, evidence: "Unknown — needs evidence", source: "unknown" }])) as Record<CategoryId, Evidence>;
   const set = (id: CategoryId, score: number, evidence: string, source = "Seller report") => { auto[id] = { score, evidence, source }; };
-  if (/\b(jetta|golf|rabbit|gti|gli|a3)\b/.test(title)) set("model",16,"Core commuter-donor target; actual parts demand uncalibrated","Target policy");
-  else if (/\b(a4|a6|tt|passat|beetle|cabrio|cabriolet)\b/.test(title)) set("model",12,"Secondary target; confirm generation and trim demand","Target policy");
+  if (/\b(jetta|golf|rabbit|gti|gli|a3)\b/.test(title)) set("model",16,"Good fit for commuter-car parts","Target policy");
+  else if (/\b(a4|a6|tt|passat|beetle|cabrio|cabriolet)\b/.test(title)) set("model",12,"Secondary donor target","Target policy");
   else if (MODEL.test(title)) set("model",6,"Lower fit with the initial commuter-donor focus","Target policy");
   const allIn = car.price_cents != null && review.pickup_cents != null ? car.price_cents + review.pickup_cents : null;
   if (allIn != null) set("economics",allIn <= 70000 ? 20 : allIn <= 90000 ? 15 : allIn <= 120000 ? 10 : 5,
@@ -110,20 +110,20 @@ export function assess(car: Car, now = new Date(), review: Review = EMPTY_REVIEW
   else checks.push("Add a pickup cost estimate; acquisition economics remain incomplete");
   if (shell) set("completeness",0,"Shell advertised; useful assemblies must be identified");
   else if (/\b(?:substantially stripped|mostly stripped|stripped car)\b/.test(text)) set("completeness",5,"Seller describes a stripped vehicle");
-  else if (missing) set("completeness",10,"Major assembly reported missing; remaining parts need confirmation");
-  else if (whole && /\bcomplete\b/.test(text)) set("completeness",15,"Seller describes a complete car; not inspected");
+  else if (missing) set("completeness",10,"Major assembly missing");
+  else if (whole && /\bcomplete\b/.test(text)) set("completeness",15,"Complete car advertised");
   else if (whole) checks.push("Whole-car sale does not prove that all assemblies remain");
-  if (/\b(?:severe|structural|extensive|heavy) rust|rusted (?:out|through)|rotted (?:out|frame|subframe)\b/.test(text)) set("condition",5,"Serious corrosion reported; inspect individual recoverable parts");
-  else if (/\b(?:rocker|rockers|surface|localized|minor|moderate) rust|rust(?:y)? rockers?\b/.test(text)) set("condition",10,"Localized/moderate corrosion reported; extent unverified");
-  else if (/\b(?:no rust|rust[ -]?free|minimal rust)\b/.test(text)) set("condition",15,"Seller reports little/no rust; hidden corrosion unverified");
+  if (/\b(?:severe|structural|extensive|heavy) rust|rusted (?:out|through)|rotted (?:out|frame|subframe)\b/.test(text)) set("condition",5,"Serious rust");
+  else if (/\b(?:rocker|rockers|surface|localized|minor|moderate) rust|rust(?:y)? rockers?\b/.test(text)) set("condition",10,"Rocker/surface rust");
+  else if (/\b(?:no rust|rust[ -]?free|minimal rust)\b/.test(text)) set("condition",15,"Little/no rust reported");
   else if (/\b(?:rust|rough shape|collision|accident|damage)\b/.test(text)) checks.push("Rust/body condition needs inspection");
   const nonRunning = /does not run|doesn't run|non[ -]?runn|not (?:been )?started|won't start|does not start|seized|blown engine|engine blown/.test(text);
   const driveFault = /(?:does not|doesn't|won't|not) drive|transmission (?:issue|problem|fail)|needs (?:a )?(?:new )?transmission/.test(text);
-  if (/no keys|missing keys/.test(text)) { set("mechanical",2,"No keys; operation unverified"); checks.push("No keys; engine operation unverified"); }
-  else if (nonRunning) set("mechanical",/seized|blown/.test(text) ? 2 : 4,"Non-running/untested drivetrain; do not assume engine or gearbox recovery");
-  else if (driveFault) set("mechanical",4,"Drive/transmission fault reported; remaining systems may still be testable");
-  else if (/\b(?:runs? (?:and |& )?drives?|runs and drives)\b/.test(text)) set("mechanical",10,"Seller reports it runs and drives; not independently tested");
-  else if (/\b(?:starts|runs strong|run strong)\b|engine.{0,40}(?:running great|runs? (?:great|well|strong))/.test(text)) set("mechanical",7,"Seller reports it starts/runs; driving condition unverified");
+  if (/no keys|missing keys/.test(text)) { set("mechanical",2,"No keys"); checks.push("No keys; engine operation unverified"); }
+  else if (nonRunning) set("mechanical",/seized|blown/.test(text) ? 2 : 4,/seized|blown/.test(text) ? "Seized/blown engine" : "Not running / parked without starting");
+  else if (driveFault) set("mechanical",4,"Drive/transmission fault");
+  else if (/\b(?:runs? (?:and |& )?drives?|runs and drives)\b/.test(text)) set("mechanical",10,"Runs and drives");
+  else if (/\b(?:starts|runs strong|run strong)\b|engine.{0,40}(?:running great|runs? (?:great|well|strong))/.test(text)) set("mechanical",7,"Starts/runs");
   if (/overheat|head gasket/.test(text)) checks.push("Overheating/head-gasket risk; engine value unproven");
   if (/coolant leak|ground issue|wiring issue|battery.{0,20}drain|kill (?:a )?switch/.test(text)) checks.push("Cooling/electrical fault reported; affected component recovery unproven");
   if (/front.end damage|collision|accident damage/.test(text)) checks.push("Collision/body damage; inspect recoverable parts");
@@ -150,9 +150,17 @@ export function assess(car: Car, now = new Date(), review: Review = EMPTY_REVIEW
   const confidence = coverage < 60 || stale || car.detail_error ? "Low" : coverage >= 85 && reviewed >= 50 ? "High" : "Medium";
   const ownershipBlocked = categories.find(category=>category.id==="documentation")?.score===0 || (ownershipProblem && review.ratings.documentation?.score!==5);
   const purchaseReadiness = ownershipBlocked ? "Blocked — ownership issue" : "Due diligence required before purchase";
-  const label = !eligible && !watch ? "Outside shortlist" : watch ? "Negotiation watch" : ownershipBlocked ? "Ownership issue — resolve first" : car.price_cents == null || stale || car.detail_error || car.availability !== "available" ? "Needs checks" : coverage < 60 ? "Needs evidence" : score >= 80 && confidence === "High" ? "Contact now" : score >= 65 ? "Investigate" : scoreMax >= 65 ? "Investigate — incomplete" : score >= 50 ? "Watch / lower offer" : "Low priority";
+  const majorFault = nonRunning || driveFault || missing || /no keys|missing keys|overheat|head gasket/.test(text);
+  // Contact priority uses the advertised price and known faults; missing categories stay unscored.
+  const label = !eligible && !watch ? "Outside shortlist" : watch ? "Negotiation watch" : ownershipBlocked ? "Ownership issue — resolve first" : car.availability !== "available" ? `Listing ${car.availability}` : car.detail_error || stale ? "Refresh needed" : car.price_cents == null ? "Price needed" : car.price_cents > 90000 || (majorFault && car.price_cents > 70000) ? "Negotiate" : (categories.find(category=>category.id==="model")?.score ?? 0) >= 12 ? "Worth contacting" : "Lower priority";
+  const summary = [
+    ...categories.filter(category => category.score != null && ["model", "mechanical", "condition", "completeness"].includes(category.id)).map(category => category.source === "Your review" ? category.evidence : category.id === "model" ? category.evidence : `Ad: ${category.evidence.toLowerCase()}`),
+    ...checks.filter(check => /^(Overheating|Cooling\/electrical|Collision\/body|Modified setup|Seller currently says)/.test(check)).map(check => check.split(';')[0]),
+    ...(checks.includes("Rust/body condition needs inspection") ? ["Body/rust issues reported"] : []),
+    ...(ownershipBlocked ? ["Ownership/paperwork problem"] : []),
+  ];
   for (const category of categories) if (category.score != null && category.id !== "seller") reasons.push(`${category.label}: ${category.score}/${category.max} — ${category.evidence}`);
-  return { eligible, negotiation_watch: watch, score, score_max: scoreMax, coverage, confidence, categories, label, purchase_readiness: purchaseReadiness, vehicle_kind: vehicleKind, all_in_cents: allIn,
+  return { eligible, negotiation_watch: watch, score, score_max: scoreMax, coverage, confidence, categories, label, summary, purchase_readiness: purchaseReadiness, vehicle_kind: vehicleKind, all_in_cents: allIn,
     reasons, checks, age_days: age, newly_listed: age != null && age < 2, tracked_days: ageDays(car.first_seen_at, now) ?? 0, distance_km: distance==null?null:Math.round(distance*10)/10, suspicious_price: suspiciousPrice };
 }
 

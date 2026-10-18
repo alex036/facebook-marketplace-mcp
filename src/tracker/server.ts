@@ -47,7 +47,7 @@ export function createTrackerServer(store: TrackerStore, makeClient: () => Scann
           catch(error) { const message=safeError(error); return json(/another tab/.test(message)?409:400,{error:message}); }
         }
       }
-      const files: Record<string, [string,string]> = { "/":["index.html","text/html"], "/app.js":["app.js","text/javascript"], "/style.css":["style.css","text/css"] };
+      const files: Record<string, [string,string]> = { "/":["index.html","text/html"], "/app.js":["app.js","text/javascript"], "/report-format.js":["report-format.js","text/javascript"], "/style.css":["style.css","text/css"] };
       const file = files[url.pathname];
       if (req.method === "GET" && file) {
         res.writeHead(200,{"Content-Type":`${file[1]}; charset=utf-8`,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'","Referrer-Policy":"no-referrer"});
