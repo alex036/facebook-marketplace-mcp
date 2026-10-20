@@ -72,6 +72,43 @@ test("GraphQL parse errors are sanitized and error-only responses fail", async t
   await assert.rejects(client.searchListings(params), /no usable GraphQL data/);
 });
 
+test("continuation pages accept Relay deferred media messages and return new listing IDs", async t => {
+  t.mock.method(RateLimiter.prototype, "wait", async () => {});
+  const client = new FacebookClient();
+  t.mock.method(client, "ensureSession", async () => session);
+  const envelope = (id: string, next: boolean) => ({ data: { marketplace_search: { feed_units: { edges: [{ node: { story_key: id } }], page_info: { has_next_page: next, end_cursor: next ? "page-two" : null } } } } });
+  const media = { label: "VideoPlayerRelay_video$defer$InstreamVideoAdBreaksPlayer_video", path: ["marketplace_search", "feed_units", "edges", 0, "node", "story", "attachments", 0, "media"], data: { id: "video-id", instream_extra_config: null } };
+  let calls=0;
+  t.mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => {
+    const variables=JSON.parse(new URLSearchParams(String(init?.body)).get("variables")!);
+    if (++calls===1) {
+      assert.equal(variables.cursor,undefined);
+      return new Response(JSON.stringify(envelope("111",true),null,2));
+    }
+    assert.equal(variables.cursor,"page-two");
+    return new Response('for (;;);'+JSON.stringify(envelope("222",false))+'\r\n'+JSON.stringify(media)+'\r\n');
+  });
+  const first=await client.searchListings({...params,limit:100},false);
+  const second=await client.searchListings({...params,limit:100,cursor:first.endCursor!},false);
+  assert.deepEqual(first.listings.map(item=>item.id),["111"]);
+  assert.deepEqual(second.listings.map(item=>item.id),["222"]);
+  assert.equal(second.hasNextPage,false);assert.equal(second.endCursor,null);
+});
+
+test("malformed deferred responses and error-only initial envelopes remain failures", async t => {
+  t.mock.method(RateLimiter.prototype,"wait",async()=>{});
+  const client=new FacebookClient();
+  t.mock.method(client,"ensureSession",async()=>session);
+  const root=JSON.stringify({data:{marketplace_search:{feed_units:{edges:[],page_info:{has_next_page:false}}}}});
+  let body=root+'\nprivate-account-marker';
+  t.mock.method(globalThis,"fetch",async()=>new Response(body));
+  await assert.rejects(client.searchListings(params,false),error=>error instanceof Error && error.message==='Failed to parse GraphQL response');
+  body=root+'\n'+JSON.stringify({errors:[{message:'private-account-marker'}]});
+  await assert.rejects(client.searchListings(params,false),error=>error instanceof Error && error.message==='Failed to parse GraphQL response');
+  body=JSON.stringify({errors:[{message:'private-account-marker'}]})+'\n'+JSON.stringify({path:['media'],label:'Video$defer$media',data:{id:'111'}});
+  await assert.rejects(client.searchListings(params,false),/no usable GraphQL data/);
+});
+
 test("unavailable or login pages do not become empty successful listings", async t => {
   t.mock.method(RateLimiter.prototype, "wait", async () => {});
   const client = new FacebookClient();

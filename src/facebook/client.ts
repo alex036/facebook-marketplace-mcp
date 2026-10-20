@@ -209,13 +209,24 @@ export class FacebookClient {
       throw new Error(`GraphQL request failed: ${res.status} ${res.statusText}`);
     }
 
-    const text = await res.text();
+    const text = (await res.text()).replace(/^\s*for\s*\(;;\);\s*/, "");
     let data: unknown;
     try {
-      data = JSON.parse(text.replace(/^\s*for\s*\(;;\);\s*/, ""));
+      data = JSON.parse(text);
     } catch {
-      // Responses can contain account data; never echo their body into MCP errors.
-      throw new Error("Failed to parse GraphQL response");
+      try {
+        // Relay can append newline-delimited deferred media metadata. The initial
+        // envelope carries the listings and page_info used by this client.
+        const chunks: unknown[] = text.trim().split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+        if (chunks.length < 2 || !chunks.slice(1).every(chunk => chunk !== null && typeof chunk === "object" &&
+            "path" in chunk && Array.isArray(chunk.path) && "label" in chunk && typeof chunk.label === "string" && "data" in chunk)) {
+          throw new Error("Invalid deferred response");
+        }
+        data = chunks[0];
+      } catch {
+        // Responses can contain account data; never echo their body into MCP errors.
+        throw new Error("Failed to parse GraphQL response");
+      }
     }
     if (!data || typeof data !== "object" || Array.isArray(data) ||
         !("data" in data) || !data.data || typeof data.data !== "object" || Array.isArray(data.data)) {
